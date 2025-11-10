@@ -56,10 +56,15 @@ class SpotifyAdvancedAnalyzer:
         except: return 0
     
     def get_audio_features(self, track_ids):
+        """Şarkıların ses özelliklerini al"""
         try:
             features = self.sp.audio_features(track_ids)
             return [f for f in features if f is not None]
-        except: return []
+        except Exception as e:
+            # Hatayı artık sessizce geçmiyoruz!
+            print(f"HATA (get_audio_features): {e}")
+            st.error(f"Spotify'dan ses özellikleri alınırken bir hata oluştu: {e}")
+            return [] # Hata durumunda boş liste döndürmeye devam et
 
     # --- Analiz Fonksiyonları (Değişiklik yok) ---
     def analyze_audio_features(self, tracks):
@@ -252,69 +257,67 @@ class GeminiReportAnalyzer:
             Sen, Spotify'ın "Haftalık Keşif" (Discover Weekly) listelerini tasarlayan uzman bir müzik veri bilimcisi ve küratörsün. Görevin, bir kullanıcının dinleme verilerini (JSON) analiz edip, onun *henüz keşfetmediği* ama müzik zevkine (türler, ses özellikleri, sanatçılar) dayanarak seveceği şarkıları bulmaktır.
             
             **GÖREV:**
-            Aşağıdaki `{json_data}` verilerini analiz et. Bu analize dayanarak, '{playlist_name}' adını verdiğimiz liste için 10 adet şarkı öner.
+            Aşağıdaki `{json_data}` verilerini analiz et. Bu analize dayanarak, '{playlist_name}' adını verdiğimiz liste için **15 ADET** şarkı öner. (Bazıları bulunamayabilir, o yüzden 10'dan fazla öner.)
     
             **KRİTİK KURALLAR:**
-            1.  **YENİLİKÇİ OL:** Önerdiğin şarkılar, kullanıcının `top_artists` veya `top_tracks` listesindekilerle **AYNI OLMAMALI**. Amaç, kullanıcının *zaten bildiği* şeyleri değil, *seveceği yeni* şeyleri keşfetmektir.
+            1.  **YENİLİKÇİ OL:** Önerdiğin şarkılar, kullanıcının `top_artists` veya `top_tracks` listesindekilerle **AYNI OLMAMALI**.
             2.  **DENGELİ OL:** Kullanıcının ana türlerine (örn: {list(report_data.get('genres', {}).keys())[0:2]}) bağlı kal, ama aynı zamanda ses özelliklerine uyan sürpriz türlerden de 1-2 şarkı ekle.
             3.  **YORUM YAPMA:** Çıktın SADECE istenen JSON formatında olmalı.
     
-            **GİRDİ VERİSİ (Kullanıcı Profili):**
-            ```json
-            {json_data}
-            ```
-
             **İSTENEN ÇIKIŞ FORMATI (Sadece bu JSON'u döndür):**
             ```json
             {{
               "songs": [
                 {{"artist": "Sanatçı Adı 1", "track": "Şarkı Adı 1"}},
-                {{"artist": "Sanatçı Adı 2", "track": "Şarkı Adı 2"}}
+                {{"artist": "Sanatçı Adı 2", "track": "Şarkı Adı 2"}},
+                {{"artist": "Sanatçı Adı 3", "track": "Şarkı Adı 3"}},
+                {{"artist": "Sanatçı Adı 4", "track": "Şarkı Adı 4"}},
+                {{"artist": "Sanatçı Adı 5", "track": "Şarkı Adı 5"}},
+                {{"artist": "Sanatçı Adı 6", "track": "Şarkı Adı 6"}},
+                {{"artist": "Sanatçı Adı 7", "track": "Şarkı Adı 7"}},
+                {{"artist": "Sanatçı Adı 8", "track": "Şarkı Adı 8"}},
+                {{"artist": "Sanatçı Adı 9", "track": "Şarkı Adı 9"}},
+                {{"artist": "Sanatçı Adı 10", "track": "Şarkı Adı 10"}},
+                {{"artist": "Sanatçı Adı 11", "track": "Şarkı Adı 11"}},
+                {{"artist": "Sanatçı Adı 12", "track": "Şarkı Adı 12"}},
+                {{"artist": "Sanatçı Adı 13", "track": "Şarkı Adı 13"}},
+                {{"artist": "Sanatçı Adı 14", "track": "Şarkı Adı 14"}},
+                {{"artist": "Sanatçı Adı 15", "track": "Şarkı Adı 15"}}
               ]
             }}
             ```
         """
         
         try:
-            print("\n🧠 Gemini, kişiselleştirilmiş müzik listesini oluşturuyor (JSON modu)...")
+            print("\n🧠 Gemini, 15 şarkılık kişiselleştirilmiş müzik listesini oluşturuyor (JSON modu)...")
             
-            # --- ANA DEĞİŞİKLİK BURADA ---
-            # Modeli SADECE JSON döndürmeye zorluyoruz.
-            # self.chat kullanamayız çünkü o text modu için ayarlı.
             json_generation_config = genai.types.GenerationConfig(
                 response_mime_type="application/json",
-                temperature=0.2 # JSON oluştururken yaratıcılığa gerek yok
+                temperature=0.2
             )
 
             response = self.model.generate_content(
                 prompt,
                 generation_config=json_generation_config
             )
-            # --- DEĞİŞİKLİK SONU ---
 
             if not response.parts:
                 st.error(f"❌ Liste oluşturma engellendi: {response.prompt_feedback}")
                 return None, None
 
-            # Yanıtı al
             json_text = response.text
             
-            # --- PYDANTIC DOĞRULAMASI ---
             try:
-                # Pydantic, JSON'un beklediğimiz yapıya (Song listesi)
-                # uygun olup olmadığını kontrol eder.
                 Playlist.model_validate_json(json_text)
                 
-                # Doğrulama başarılıysa, metrikleri al ve döndür
                 usage = response.usage_metadata
                 usage_metrics = {"prompt_tokens": usage.prompt_token_count, "response_tokens": usage.candidates_token_count, "total_tokens": usage.total_token_count}
                 
-                return json_text, usage_metrics # Başarılı: Garantili JSON metni ve metrikler
+                return json_text, usage_metrics
 
             except ValidationError as e:
-                # Model geçerli bir JSON döndürdü, ancak Pydantic modelimizle EŞLEŞMEDİ.
                 st.error(f"❌ Gemini'den gelen JSON yapısı bozuk! Hata: {e}")
-                st.code(json_text) # Hatanın ne olduğunu görmek için
+                st.code(json_text)
                 return None, None
                 
         except Exception as e:
@@ -408,32 +411,70 @@ def display_spotify_report(report_data):
         cols[2].metric("🎤 Farklı Sanatçı Sayısı", stats.get('unique_artists', 0))
 
 def create_spotify_playlist(analyzer, playlist_name, playlist_json):
-    """Gemini'den gelen JSON'u kullanarak Spotify'da çalma listesi oluşturur"""
+    """
+    Gemini'den gelen JSON'u kullanarak Spotify'da çalma listesi oluşturur.
+    2 Aşamalı Arama ve 10 şarkı hedefi ile güncellendi.
+    """
     try:
         data = json.loads(playlist_json)
-        songs = data.get('songs', [])
-        if not songs:
+        # Gemini'den gelen 15 (veya daha fazla) şarkılık listeyi al
+        songs_to_search = data.get('songs', [])
+        if not songs_to_search:
             st.error("Önerilen şarkı listesi boş.")
             return
 
         track_uris = []
-        with st.spinner("Şarkılar Spotify'da aranıyor..."):
-            for i, song in enumerate(songs):
-                query = f"track:\"{song['track']}\" artist:\"{song['artist']}\""
-                results = analyzer.sp.search(q=query, type='track', limit=1)
+        songs_found_count = 0
+        
+        # --- YENİ ARAMA MANTIĞI ---
+        with st.spinner(f"Spotify'da {len(songs_to_search)} şarkı arasında en iyi 10 eşleşme aranıyor..."):
+            progress_bar = st.progress(0, text="Arama başlıyor...")
+            
+            for i, song in enumerate(songs_to_search):
                 
-                if results['tracks']['items']:
-                    track_uri = results['tracks']['items'][0]['uri']
+                # HEDEF 1: 10 şarkıyı bulduysak, aramayı durdur
+                if songs_found_count >= 10:
+                    st.toast("Hedeflenen 10 şarkıya ulaşıldı.")
+                    break
+                
+                track_uri = None
+                
+                # 1. DENEME: Birebir (Spesifik) Arama
+                try:
+                    query_specific = f"track:\"{song['track']}\" artist:\"{song['artist']}\""
+                    results_specific = analyzer.sp.search(q=query_specific, type='track', limit=1)
+                    if results_specific['tracks']['items']:
+                        track_uri = results_specific['tracks']['items'][0]['uri']
+                except Exception:
+                    pass # Arama hatası olursa 2. denemeye geç
+
+                # 2. DENEME: Genel (Fuzzy) Arama (Eğer ilki başarısızsa)
+                if not track_uri:
+                    try:
+                        query_general = f"{song['artist']} {song['track']}"
+                        results_general = analyzer.sp.search(q=query_general, type='track', limit=1)
+                        if results_general['tracks']['items']:
+                            track_uri = results_general['tracks']['items'][0]['uri']
+                    except Exception:
+                        pass # Bu da başarısız olursa atla
+
+                # SONUÇ:
+                if track_uri:
                     track_uris.append(track_uri)
-                    st.progress((i + 1) / len(songs), text=f"Şarkı bulundu: {song['track']}")
+                    songs_found_count += 1
+                    progress_bar.progress((i + 1) / len(songs_to_search), text=f"✅ Bulundu ({songs_found_count}/10): {song['track']}")
                 else:
-                    st.warning(f"Şarkı bulunamadı: {song['track']} - {song['artist']}")
+                    progress_bar.progress((i + 1) / len(songs_to_search), text=f"⚠️ Bulunamadı: {song['track']}")
+                    # Kullanıcı arayüzünü kirletmemek için bulunamayanları sessizce geç
+                    # st.warning(f"Eşleşme bulunamadı: {song['track']} - {song['artist']}")
+            
+        # --- ARAMA MANTIĞI SONU ---
         
         if not track_uris:
             st.error("Listeye eklenecek geçerli şarkı bulunamadı.")
             return
 
-        with st.spinner(f"'{playlist_name}' listesi oluşturuluyor..."):
+        with st.spinner(f"'{playlist_name}' listesi {songs_found_count} şarkı ile oluşturuluyor..."):
             playlist = analyzer.sp.user_playlist_create(
                 user=analyzer.user_id,
                 name=playlist_name,
@@ -444,8 +485,8 @@ def create_spotify_playlist(analyzer, playlist_name, playlist_json):
             # Şarkıları 100'lük gruplar halinde ekle (Spotify limiti)
             analyzer.sp.playlist_add_items(playlist['id'], track_uris)
         
-        st.success(f"✅ Çalma listesi '{playlist_name}' başarıyla oluşturuldu!")
-        st.markdown(f"[{playlist['external_urls']['spotify']}]({playlist['external_urls']['spotify']})")
+        st.success(f"✅ Çalma listesi '{playlist_name}' başarıyla oluşturuldu! ({songs_found_count} şarkı eklendi)")
+        st.markdown(f"**Listenizi açmak için tıklayın:** [{playlist['external_urls']['spotify']}]({playlist['external_urls']['spotify']})")
 
     except json.JSONDecodeError:
         st.error("❌ Gemini'den gelen yanıt JSON formatında değil. Ham çıktı:")
@@ -461,22 +502,28 @@ def create_spotify_playlist(analyzer, playlist_name, playlist_json):
 st.set_page_config(page_title="Spotify Analiz Aracı", layout="wide", page_icon="🎵")
 
 # --- API Anahtarları ---
-CLIENT_ID = "d8e0da89b31f481fa134d9235e519765" # Kendi ID'niz
-CLIENT_SECRET = "fcfbbf035089409cb5ef34f05694243f" # Kendi Secret'ınız
+# Spotipy anahtarlarını ortam değişkenlerinden oku
+# Spotipy kütüphanesi bu değişken isimlerini otomatik olarak tanır!
+SPOTIPY_CLIENT_ID = os.getenv("SPOTIPY_CLIENT_ID")
+SPOTIPY_CLIENT_SECRET = os.getenv("SPOTIPY_CLIENT_SECRET")
 REDIRECT_URI = "http://127.0.0.1:8888/callback" # Spotify Dashboard'da aynen bu olmalı
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-if not GEMINI_API_KEY:
-    st.error("❌ HATA: GEMINI_API_KEY ortam değişkeni bulunamadı. Lütfen ayarlayın.")
+if not GEMINI_API_KEY or not SPOTIPY_CLIENT_ID or not SPOTIPY_CLIENT_SECRET:
+    st.error("❌ HATA: API Anahtarları (GEMINI veya SPOTIPY) ortam değişkenlerinde bulunamadı.")
+    st.info("Lütfen .zshrc dosyanızı kontrol edin.")
     st.stop()
-
 # --- Bağlantıları Önbelleğe Alma ---
 
 @st.cache_resource
 def init_spotify_analyzer():
     try:
-        analyzer = SpotifyAdvancedAnalyzer(CLIENT_ID, CLIENT_SECRET, REDIRECT_URI)
+        analyzer = SpotifyAdvancedAnalyzer(
+            client_id=SPOTIPY_CLIENT_ID, 
+            client_secret=SPOTIPY_CLIENT_SECRET, 
+            redirect_uri=REDIRECT_URI
+        )
         return analyzer
     except Exception as e:
         st.error(f"❌ Spotify'a bağlanılamadı. Spotify Dashboard'da Redirect URI'yi kontrol edin: {REDIRECT_URI}")
