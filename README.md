@@ -1,12 +1,12 @@
 # 🎵 Spotify Gelişmiş Müzik Analiz Aracı 🤖
 
-Bu proje, **Spotify verilerinizi derinlemesine analiz eden** ve **Google Gemini (1.5-Flash)** yapay zekasını kullanarak müzik zevkiniz hakkında kişiselleştirilmiş, psikolojik bir profil çıkaran interaktif bir web uygulamasıdır.
+Bu proje, **Spotify verilerinizi derinlemesine analiz eden** ve **Google Gemini (2.5-Flash)** yapay zekasını kullanarak müzik zevkiniz hakkında kişiselleştirilmiş, psikolojik bir profil çıkaran interaktif bir web uygulamasıdır.
 
 Sadece “en çok dinlenen” şarkılarınızı değil, tüm kütüphanenizi veya spesifik çalma listelerinizi analiz ederek, **müzik ruh halinizi**, **favori türlerinizi** ve **dinleme alışkanlıklarınızı** ortaya çıkarır.
 
-> 💡 (Lütfen buraya uygulamanızın bir ekran görüntüsünü ekleyin.)
+> 💡
 
----
+## ![alt text](<../../../../var/folders/g_/jlsd_6ln6pvdtskyr2f9hf3h0000gn/T/TemporaryItems/NSIRD_screencaptureui_bbwuUA/Ekran Resmi 2025-11-11 00.44.28.png>)
 
 ## ✨ Temel Özellikler
 
@@ -119,7 +119,7 @@ setx SPOTIPY_CLIENT_SECRET "SENİN_SPOTIFY_SECRET_BURAYA"
 setx GEMINI_API_KEY "SENİN_GEMINI_API_KEY_BURAYA"
 ```
 
-> Değişikliklerin geçerli olması için terminali yeniden başlatın.
+> !Değişikliklerin geçerli olması için terminali yeniden başlatın.
 
 ---
 
