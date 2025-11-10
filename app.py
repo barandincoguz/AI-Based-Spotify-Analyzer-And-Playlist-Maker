@@ -16,11 +16,14 @@ from pydantic import BaseModel, ValidationError
 # SINIF 1: SPOTIFY ANALİZ ARACI (DÜZENLENDİ)
 # -------------------------------------------------------------------
 
+# -------------------------------------------------------------------
+# SINIF 1: SPOTIFY ANALİZ ARACI (TAMAMEN GÜNCELLENDİ)
+# -------------------------------------------------------------------
+
 class SpotifyAdvancedAnalyzer:
     def __init__(self, client_id, client_secret, redirect_uri):
         """Gelişmiş Spotify API analiz aracı (Streamlit için düzenlendi)"""
         cache_path = ".spotify_cache"
-        # YENİ İZİN EKLENDİ: 'playlist-modify-public'
         self.scope = "user-top-read playlist-read-private user-read-recently-played user-library-read playlist-modify-public"
         
         self.sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
@@ -30,7 +33,7 @@ class SpotifyAdvancedAnalyzer:
             scope=self.scope,
             cache_path=cache_path,
             open_browser=True,
-            show_dialog=True # Tarayıcıda onayı göstermeye zorla
+            show_dialog=True
         ))
         
         try:
@@ -40,10 +43,17 @@ class SpotifyAdvancedAnalyzer:
             st.error(f"Spotify bağlantı hatası: {e}")
             st.stop()
 
-    # --- Veri Çekme Fonksiyonları (Değişiklik yok) ---
-    def get_top_tracks(self, time_range='short_term', limit=50):
-        return self.sp.current_user_top_tracks(time_range=time_range, limit=limit)['items']
+    # --- Veri Çekme Fonksiyonları (Filtreler Güçlendirildi) ---
     
+    def get_top_tracks(self, time_range='short_term', limit=50):
+        """En çok dinlenen şarkıları getir (GÜVENLİ FİLTRELEME İLE)"""
+        results = self.sp.current_user_top_tracks(time_range=time_range, limit=limit)
+        tracks = [
+            track for track in results['items'] 
+            if isinstance(track, dict) and track.get('id')
+        ]
+        return tracks
+
     def get_top_artists(self, time_range='short_term', limit=50):
         return self.sp.current_user_top_artists(time_range=time_range, limit=limit)['items']
     
@@ -55,26 +65,146 @@ class SpotifyAdvancedAnalyzer:
             return self.sp.current_user_saved_tracks(limit=1)['total']
         except: return 0
     
-    def get_audio_features(self, track_ids):
-        """Şarkıların ses özelliklerini al"""
+    def get_user_playlists(self):
+        """Kullanıcının tüm çalma listelerini çeker."""
+        playlists = []
+        results = self.sp.current_user_playlists(limit=50)
+        while results:
+            playlists.extend(results['items'])
+            if results['next']:
+                results = self.sp.next(results)
+            else:
+                results = None
+        return [p for p in playlists if p['owner']['id'] == self.user_id or p['collaborative']]
+    
+    @st.cache_data(show_spinner=False)
+    def get_all_saved_tracks(_self):
+        """Kullanıcının kütüphanesindeki TÜM şarkıları sayfalama yaparak çeker (GÜVENLİ FİLTRELEME İLE)."""
+        tracks = []
+        results = _self.sp.current_user_saved_tracks(limit=50)
+        with st.spinner("Kütüphanenizdeki tüm şarkılar çekiliyor (Bu biraz sürebilir)..."):
+            while results:
+                tracks.extend([
+                    item['track'] for item in results['items'] 
+                    if isinstance(item.get('track'), dict) and item['track'].get('id')
+                ])
+                if results['next']:
+                    results = _self.sp.next(results)
+                else:
+                    results = None
+        st.toast(f"{len(tracks)} adet 'kaydedilmiş şarkı' bulundu.")
+        return tracks
+    
+    @st.cache_data(show_spinner=False)
+    def get_playlist_tracks(_self, playlist_id):
+        """Belirli bir çalma listesindeki TÜM şarkıları sayfalama yaparak çeker (GÜVENLİ FİLTRELEME İLE)."""
+        tracks = []
+        results = _self.sp.playlist_tracks(playlist_id, limit=100)
+        with st.spinner("Çalma listesindeki tüm şarkılar çekiliyor..."):
+            while results:
+                tracks.extend([
+                    item['track'] for item in results['items'] 
+                    if isinstance(item.get('track'), dict) and item['track'].get('id')
+                ])
+                if results['next']:
+                    results = _self.sp.next(results)
+                else:
+                    results = None
+        st.toast(f"{len(tracks)} adet 'çalma listesi şarkısı' bulundu.")
+        return tracks
+
+    @st.cache_data(show_spinner=False, ttl=3600)
+    def get_all_user_tracks_heavy(_self):
+        """Kullanıcının TÜM şarkılarını (Beğenilenler + Tüm Çalma Listeleri) çeker."""
+        all_tracks_dict = {} 
+        
+        with st.spinner("1/3: Beğenilen Şarkılar (Kütüphane) çekiliyor..."):
+            saved_tracks = _self.get_all_saved_tracks()
+            for track in saved_tracks:
+                if track and track.get('id'):
+                    all_tracks_dict[track['id']] = track
+            st.toast(f"{len(all_tracks_dict)} beğenilen şarkı eklendi.")
+
+        with st.spinner("2/3: Çalma listeleriniz bulunuyor..."):
+            playlists = _self.get_user_playlists()
+            st.toast(f"{len(playlists)} adet çalma listesi bulundu.")
+
+        status_placeholder = st.empty()
+        progress_bar = st.progress(0, text="3/3: Çalma listeleri taranıyor...")
+        
+        for i, playlist in enumerate(playlists):
+            playlist_name = playlist.get('name', 'Bilinmeyen Liste')
+            status_placeholder.text(f"3/3: '{playlist_name}' listesi taranıyor... ({i+1}/{len(playlists)})")
+            try:
+                playlist_tracks = _self.get_playlist_tracks(playlist['id'])
+                for track in playlist_tracks:
+                    if track and track.get('id'):
+                        all_tracks_dict[track['id']] = track
+            except Exception as e:
+                st.warning(f"'{playlist_name}' listesi taranırken hata: {e}")
+            progress_bar.progress((i + 1) / len(playlists))
+
+        status_placeholder.success(f"Tarama tamamlandı! {len(all_tracks_dict)} adet EŞSİZ şarkı bulundu.")
+        progress_bar.empty()
+        
+        return list(all_tracks_dict.values())
+        
+    # --- YENİ TEMİZLEME FONKSİYONU ---
+    def sanitize_track_list(self, tracks: List) -> List[Dict]:
+        """
+        Gelen 'kirli' şarkı listesini (wrapper'lar, bozuk veriler) alır ve
+        %100 temiz, geçerli şarkı objelerinden oluşan bir liste döndürür.
+        """
+        clean_tracks = []
+        if not tracks:
+            return []
+            
+        for item in tracks:
+            track_obj = None
+            
+            # 1. Gelen öğenin kendisi bir sözlük mü? (Değilse: 'True', 'None' vb. atla)
+            if not isinstance(item, dict):
+                continue
+            
+            # 2. Bu bir 'wrapper' obje mi? (örn: {'track': {...}} veya {'track': True})
+            if 'track' in item:
+                # 2a. Wrapper'ın İÇİ geçerli bir sözlük mü?
+                if isinstance(item.get('track'), dict) and item['track'].get('id'):
+                    track_obj = item['track']
+                # Değilse: Bu, {'track': True} gibi bozuk bir veridir, atlanır.
+            
+            # 3. Bu, doğrudan bir şarkı objesi mi? (örn: {'id': ...})
+            elif 'id' in item:
+                track_obj = item
+                
+            # 4. Geçerli bir şarkı objesi bulduysak listeye ekle
+            if track_obj:
+                clean_tracks.append(track_obj)
+                
+        return clean_tracks
+    
+    # --- Analiz Fonksiyonları (Artık TEMİZ liste alacaklar) ---
+
+    def get_audio_features(self, tracks):
+        """Şarkıların ses özelliklerini al (TEMİZ LİSTE VARSAYAR)"""
+        # 'tracks' listesi artık %100 temiz şarkı objeleri içeriyor
+        track_ids = [track_obj['id'] for track_obj in tracks if track_obj.get('id')]
+        if not track_ids: return None
+        
         try:
-            features = self.sp.audio_features(track_ids)
-            return [f for f in features if f is not None]
+            all_features = []
+            for i in range(0, len(track_ids), 50):
+                batch = track_ids[i:i+50]
+                all_features.extend(self.sp.audio_features(batch))
+            
+            all_features = [f for f in all_features if f is not None] # API'den None gelebilir
+            if not all_features: return None
+
         except Exception as e:
-            # Hatayı artık sessizce geçmiyoruz!
             print(f"HATA (get_audio_features): {e}")
             st.error(f"Spotify'dan ses özellikleri alınırken bir hata oluştu: {e}")
-            return [] # Hata durumunda boş liste döndürmeye devam et
-
-    # --- Analiz Fonksiyonları (Değişiklik yok) ---
-    def analyze_audio_features(self, tracks):
-        track_ids = [track['id'] for track in tracks if track.get('id')]
-        if not track_ids: return None
-        all_features = []
-        for i in range(0, len(track_ids), 50):
-            batch = track_ids[i:i+50]
-            all_features.extend(self.get_audio_features(batch))
-        if not all_features: return None
+            return None
+        
         metrics = {'danceability': [], 'energy': [], 'valence': [], 'acousticness': [], 'instrumentalness': [], 'speechiness': [], 'tempo': []}
         for feature in all_features:
             for key in metrics.keys():
@@ -87,12 +217,17 @@ class SpotifyAdvancedAnalyzer:
         return averages
     
     def analyze_genres(self, tracks):
+        """Detaylı tür analizi (TEMİZ LİSTE VARSAYAR)"""
         genre_counter = Counter()
         artist_counter = Counter()
         genre_by_artist = defaultdict(set)
-        for track in tracks:
-            track_obj = track.get('track', track)
+        
+        # 'tracks' listesi artık %100 temiz şarkı objeleri içeriyor
+        for track_obj in tracks:
+            # Artık track_obj.get('artists') demeden önce kontrol etmeye gerek yok
             for artist in track_obj.get('artists', []):
+                if not isinstance(artist, dict) or not artist.get('id'):
+                    continue
                 artist_name = artist['name']
                 artist_counter[artist_name] += 1
                 try:
@@ -105,14 +240,22 @@ class SpotifyAdvancedAnalyzer:
         return genre_counter, artist_counter, genre_by_artist
     
     def analyze_popularity(self, tracks):
-        popularities = [track.get('track', track).get('popularity', 0) for track in tracks if track.get('track', track).get('popularity')]
+        """Popülerlik analizi (TEMİZ LİSTE VARSAYAR)"""
+        # 'tracks' listesi artık %100 temiz şarkı objeleri içeriyor
+        popularities = []
+        for track_obj in tracks:
+            pop = track_obj.get('popularity', 0)
+            if pop:
+                popularities.append(pop)
+        
         if not popularities: return None
         return {'avg': statistics.mean(popularities), 'max': max(popularities), 'min': min(popularities), 'median': statistics.median(popularities)}
     
     def get_decade_distribution(self, tracks):
+        """Şarkıların yıllara göre dağılımı (TEMİZ LİSTE VARSAYAR)"""
         decades = Counter()
-        for track in tracks:
-            track_obj = track.get('track', track)
+        # 'tracks' listesi artık %100 temiz şarkı objeleri içeriyor
+        for track_obj in tracks:
             release_date = track_obj.get('album', {}).get('release_date', '')
             if release_date:
                 try:
@@ -123,6 +266,7 @@ class SpotifyAdvancedAnalyzer:
         return decades
     
     def create_mood_profile(self, audio_features):
+        # Bu fonksiyon zaten temiz veri alıyordu, değişiklik yok
         if not audio_features: return None
         energy = audio_features.get('energy', 0)
         valence = audio_features.get('valence', 0)
@@ -133,43 +277,74 @@ class SpotifyAdvancedAnalyzer:
         elif energy > 0.6 and valence < 0.5: return "Yoğun ve Duygusal 🔥"
         else: return "Dengeli ve Çeşitli 🎵"
 
-    # --- ANA RAPOR FONKSİYONU (TÜM 'PRINT'LER SİLİNDİ) ---
-    def fetch_spotify_data(self, time_range='short_term'):
-        """
-        Sessizce tüm Spotify verilerini toplar ve tek bir sözlükte döndürür.
-        """
-        # Veri toplama
+    # --- Raporlama Fonksiyonları (Temizleyiciyi Kullanacak Şekilde Güncellendi) ---
+
+    def get_top_tracks_and_artists(self, time_range='short_term'):
+        """'En Çok Dinlenenler' modu için verileri çeker."""
         top_tracks = self.get_top_tracks(time_range, limit=50)
-        top_artists = self.get_top_artists(time_range, limit=50)
-        recent_tracks = self.get_recently_played(limit=50)
-        genre_counter, artist_counter, genre_by_artist = self.analyze_genres(top_tracks)
-        audio_features = self.analyze_audio_features(top_tracks)
+        top_artists_api = self.get_top_artists(time_range, limit=50)
+        top_artists_data = [
+            {'name': a['name'], 
+             'popularity': a.get('popularity', 0), 
+             'followers': a.get('followers', {}).get('total', 0), 
+             'genres': a.get('genres', [])
+            } for a in top_artists_api
+        ]
+        return top_tracks, top_artists_data
+    
+    def run_analysis_on_tracklist(self, tracks: List, analysis_title: str, top_artists_override: List = None):
+        """
+        Verilen 'KİRLİ' ŞARKI LİSTESİ üzerinden tam analiz yapar.
+        """
         
-        # Ek analizler
-        popularity_stats = self.analyze_popularity(top_tracks)
-        decade_dist = self.get_decade_distribution(top_tracks)
+        # --- ANA DÜZELTME BURADA ---
+        # Analize başlamadan önce listeyi BİR KEZ temizle.
+        clean_tracks = self.sanitize_track_list(tracks)
+        
+        if not clean_tracks:
+            st.error("Gelen şarkı listesi filtrelendikten sonra boş kaldı. Analiz durduruldu.")
+            st.session_state['report_data'] = None # Raporun boş olduğunu belirt
+            return None
+        
+        st.toast(f"{len(tracks)} öğe alındı, {len(clean_tracks)} geçerli şarkı analiz edilecek.")
+        # --- DÜZELTME SONU ---
+        
+        # 1. Çekirdek Analizler (TEMİZ LİSTE ile çalışır)
+        st.toast(f"{len(clean_tracks)} şarkı analiz ediliyor...")
+        genre_counter, artist_counter, genre_by_artist = self.analyze_genres(clean_tracks)
+        audio_features = self.get_audio_features(clean_tracks)
+        popularity_stats = self.analyze_popularity(clean_tracks)
+        decade_dist = self.get_decade_distribution(clean_tracks)
         mood_profile = self.create_mood_profile(audio_features)
-        saved_count = self.get_saved_tracks_count()
         
-        # JSON raporu (Veri döndürme)
+        # 2. Top Sanatçıları Belirle
+        top_artists_data = []
+        if top_artists_override:
+            top_artists_data = top_artists_override
+        else:
+            st.toast("Sanatçı sıklığı listeden hesaplanıyor...")
+            for artist_name, count in artist_counter.most_common(20):
+                top_artists_data.append({'name': f"{artist_name} ({count} şarkı)", 'popularity': 0, 'followers': 0, 'genres': []})
+
+        # 3. Raporu Oluştur (TEMİZ LİSTE ile)
         report_data = {
             'timestamp': datetime.now().isoformat(),
-            'time_range': time_range,
+            'time_range': analysis_title,
             'user': self.user_name,
             'mood_profile': mood_profile,
             'audio_features': audio_features,
             'genres': dict(genre_counter.most_common(20)),
             'genre_by_artist': {k: list(v) for k, v in genre_by_artist.items()},
-            'top_artists': [{'name': a['name'], 'popularity': a.get('popularity', 0), 'followers': a.get('followers', {}).get('total', 0), 'genres': a.get('genres', [])} for a in top_artists[:20]],
-            'top_tracks': [{'name': t['name'], 'artists': [a['name'] for a in t['artists']], 'album': t['album']['name']} for t in top_tracks[:20]],
+            'top_artists': top_artists_data,
+            'top_tracks': [{'name': t['name'], 'artists': [a['name'] for a in t['artists']], 'album': t['album']['name']} for t in clean_tracks[:20]], # Temiz listeyi kullan
             'popularity_stats': popularity_stats,
             'decade_distribution': dict(decade_dist),
             'statistics': {
-                'saved_tracks': saved_count,
+                'total_library_saved_tracks': self.get_saved_tracks_count(),
                 'unique_genres': len(genre_counter),
-                'unique_artists': len(top_artists),
-                'analyzed_tracks': len(top_tracks),
-                'recent_tracks': len(recent_tracks)
+                'unique_artists': len(artist_counter),
+                'analyzed_tracks': len(clean_tracks), # Temiz listeyi kullan
+                'recent_tracks': len(self.get_recently_played(limit=50))
             }
         }
         return report_data
@@ -293,7 +468,7 @@ class GeminiReportAnalyzer:
             
             json_generation_config = genai.types.GenerationConfig(
                 response_mime_type="application/json",
-                temperature=0.2
+                temperature=0.5
             )
 
             response = self.model.generate_content(
@@ -405,10 +580,30 @@ def display_spotify_report(report_data):
     st.header("📊 Özet İstatistikler")
     if report_data.get('statistics'):
         stats = report_data['statistics']
+        
+        # --- DEĞİŞİKLİK BURADA (Önceki adımdaki düzeltme) ---
+        
+        # 1. Analiz başlığına göre dinamik bir etiket oluştur
+        analysis_title = report_data.get('time_range', 'Bu Analizdeki')
+        if "Kütüphanem" in analysis_title:
+            metric_label = "🎵 Kütüphanedeki Şarkılar"
+        elif "Çalma Listesi" in analysis_title:
+            metric_label = "🎶 Playlist'teki Şarkılar"
+        elif "Gerçek 'Tüm Şarkılar'" in analysis_title:
+            metric_label = "🌟 EŞSİZ TOPLAM ŞARKI"
+        else:
+            metric_label = "💿 Analiz Edilen Şarkılar"
+
+        # 2. Metrikleri göster
         cols = st.columns(3)
-        cols[0].metric("🎵 Kütüphanedeki Şarkılar", f"{stats.get('saved_tracks', 0):,}")
+        
+        # 'saved_tracks' yerine 'analyzed_tracks' kullanıyoruz
+        cols[0].metric(metric_label, f"{stats.get('analyzed_tracks', 0):,}")
+        
         cols[1].metric("🎸 Farklı Tür Sayısı", stats.get('unique_genres', 0))
-        cols[2].metric("🎤 Farklı Sanatçı Sayısı", stats.get('unique_artists', 0))
+        
+        # Ayrı bir metrik olarak Toplam Kütüphane Sayısını (Beğenilenler) göster
+        cols[2].metric("❤️ Toplam Beğenilen Şarkı", f"{stats.get('total_library_saved_tracks', 0):,}")
 
 def create_spotify_playlist(analyzer, playlist_name, playlist_json):
     """
@@ -496,26 +691,23 @@ def create_spotify_playlist(analyzer, playlist_name, playlist_json):
         st.code(traceback.format_exc())
 
 # -------------------------------------------------------------------
-# ANA STREAMLIT UYGULAMASI
+# ANA STREAMLIT UYGULAMASI (TAMAMEN GÜNCELLENDİ)
 # -------------------------------------------------------------------
 
 st.set_page_config(page_title="Spotify Analiz Aracı", layout="wide", page_icon="🎵")
 
 # --- API Anahtarları ---
-# Spotipy anahtarlarını ortam değişkenlerinden oku
-# Spotipy kütüphanesi bu değişken isimlerini otomatik olarak tanır!
+REDIRECT_URI = "http://127.0.0.1:8888/callback"
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 SPOTIPY_CLIENT_ID = os.getenv("SPOTIPY_CLIENT_ID")
 SPOTIPY_CLIENT_SECRET = os.getenv("SPOTIPY_CLIENT_SECRET")
-REDIRECT_URI = "http://127.0.0.1:8888/callback" # Spotify Dashboard'da aynen bu olmalı
-
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 if not GEMINI_API_KEY or not SPOTIPY_CLIENT_ID or not SPOTIPY_CLIENT_SECRET:
     st.error("❌ HATA: API Anahtarları (GEMINI veya SPOTIPY) ortam değişkenlerinde bulunamadı.")
     st.info("Lütfen .zshrc dosyanızı kontrol edin.")
     st.stop()
+    
 # --- Bağlantıları Önbelleğe Alma ---
-
 @st.cache_resource
 def init_spotify_analyzer():
     try:
@@ -534,6 +726,12 @@ def init_spotify_analyzer():
 def init_gemini_analyzer(api_key):
     return GeminiReportAnalyzer(api_key=api_key)
 
+# --- Çalma Listesi Verisini Önbelleğe Alma ---
+@st.cache_data(ttl=600, show_spinner="Çalma listeleriniz yükleniyor...") # 10dk önbellek
+def load_user_playlists(_analyzer):
+    return _analyzer.get_user_playlists()
+
+
 # --- Arayüz Başlangıcı ---
 st.title("🎵 Spotify Gelişmiş Müzik Analiz Aracı 🤖")
 st.markdown("Müzik zevkinizi Spotify verileriyle analiz edin ve Gemini AI ile kişiselleştirilmiş yorumlar alın.")
@@ -546,49 +744,124 @@ except Exception as e:
     st.error("Bağlantı hatası. Lütfen sayfayı yenileyin.")
     st.stop()
 
-# --- Kenar Çubuğu (Sidebar) ---
-st.sidebar.header("Rapor Ayarları")
-time_range_options = {
-    '🕐 Son 4 Hafta': 'short_term',
-    '📅 Son 6 Ay': 'medium_term',
-    '⏳ Tüm Zamanlar': 'long_term'
-}
-selected_label = st.sidebar.selectbox(
-    "Hangi dönemi analiz etmek istersiniz?",
-    time_range_options.keys()
+# --- YENİ KENAR ÇUBUĞU (SIDEBAR) MANTIĞI ---
+st.sidebar.header("1. Analiz Kaynağı Seçin")
+
+analysis_source = st.sidebar.radio(
+    "Neyi analiz etmek istiyorsunuz?",
+    ("En Çok Dinlediklerim (Top 50)", 
+     "❤️ Kütüphane (Sadece Beğenilenler)", # Düzeltildi
+     "Bir Çalma Listem",
+     "⚠️ Gerçek 'Tüm Şarkılar' (Yavaş)"), # Yeni Eklendi
+    key="analysis_source"
 )
-selected_range = time_range_options[selected_label]
 
-playlist_name = st.sidebar.text_input("Yeni Çalma Listesi Adı:", f"Gemini Keşif Listem ({selected_label})")
+st.sidebar.header("2. Ayarlar")
 
-if st.sidebar.button(f"🚀 {selected_label} Raporunu Oluştur", type="primary", use_container_width=True):
+# Varsayılan değerleri ayarla
+selected_range = None
+selected_playlist_id = None
+report_title = ""
+tracks_to_analyze = []
+top_artists_data = None
+
+if analysis_source == "En Çok Dinlediklerim (Top 50)":
+    time_range_options = {
+        '🕐 Son 4 Hafta': 'short_term',
+        '📅 Son 6 Ay': 'medium_term',
+        '⏳ Tüm Zamanlar': 'long_term'
+    }
+    selected_label = st.sidebar.selectbox(
+        "Hangi dönemi analiz etmek istersiniz?",
+        time_range_options.keys()
+    )
+    selected_range = time_range_options[selected_label]
+    report_title = f"{selected_label} (En Çok Dinlenenler)"
+    
+elif analysis_source == "❤️ Kütüphane (Sadece Beğenilenler)":
+    report_title = "Kütüphanemdeki Şarkılar (Beğenilenler)"
+
+elif analysis_source == "Bir Çalma Listem":
+    try:
+        playlists = load_user_playlists(analyzer)
+        playlist_map = {p['name']: p['id'] for p in playlists if p.get('name')}
+        
+        selected_playlist_name = st.sidebar.selectbox(
+            "Hangi çalma listeniz analiz edilsin?",
+            playlist_map.keys()
+        )
+        selected_playlist_id = playlist_map.get(selected_playlist_name)
+        report_title = f"Çalma Listesi: {selected_playlist_name}"
+    except Exception as e:
+        st.sidebar.error(f"Çalma listeleri çekilirken hata: {e}")
+
+elif analysis_source == "⚠️ Gerçek 'Tüm Şarkılar' (Yavaş)":
+    st.sidebar.warning("Bu analiz, TÜM çalma listelerinizi ve beğenilen şarkılarınızı tarayacaktır. API limitlerine bağlı olarak dakikalar sürebilir.", icon="⏳")
+    report_title = "Gerçek 'Tüm Şarkılar' Analizi (Kütüphane + Listeler)"
+
+
+playlist_name = st.sidebar.text_input("Yeni Keşif Listesi Adı:", f"Gemini Keşif: {report_title}")
+
+# --- YENİ BUTON MANTIĞI ---
+# --- YENİ BUTON MANTIĞI ---
+if st.sidebar.button(f"🚀 Analizi Başlat!", type="primary", use_container_width=True):
     # Tüm verileri temizle
     st.session_state.clear()
     
     try:
-        # 1. Spotify Verilerini Çek
-        with st.spinner("📥 Spotify verileri toplanıyor... (Bu işlem 10-15 sn sürebilir)"):
-            report_data = analyzer.fetch_spotify_data(selected_range)
-            st.session_state['report_data'] = report_data
-            
-            # JSON olarak kaydet (opsiyonel, sunucuda çalışır)
-            filename = f'spotify_detayli_rapor_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json'
-            with open(filename, 'w', encoding='utf-8') as f:
-                json.dump(report_data, f, ensure_ascii=False, indent=2)
+        # 1. Kaynağa Göre Spotify Verilerini Çek (KİRLİ LİSTE)
+        if analysis_source == "En Çok Dinlediklerim (Top 50)":
+            with st.spinner("En çok dinlenenler çekiliyor..."):
+                tracks_to_analyze, top_artists_data = analyzer.get_top_tracks_and_artists(selected_range)
+        
+        elif analysis_source == "❤️ Kütüphane (Sadece Beğenilenler)":
+            tracks_to_analyze = analyzer.get_all_saved_tracks()
+        
+        elif analysis_source == "Bir Çalma Listem":
+            if selected_playlist_id:
+                tracks_to_analyze = analyzer.get_playlist_tracks(selected_playlist_id)
+            else:
+                st.error("Geçerli bir çalma listesi seçilmedi.")
+                st.stop()
 
-        # 2. Gemini Analizini Yap
+        elif analysis_source == "⚠️ Gerçek 'Tüm Şarkılar' (Yavaş)":
+            tracks_to_analyze = analyzer.get_all_user_tracks_heavy()
+
+        if not tracks_to_analyze:
+            st.error("Analiz edilecek şarkı bulunamadı. Kütüphaneniz veya listeniz boş olabilir.")
+            st.stop()
+
+        # --- DEBUG ADIMI KALDIRILDI ---
+        # Temizleme işlemi artık run_analysis_on_tracklist içinde yapılıyor.
+
+        # 2. Çekirdek Analizi Çalıştır
+        # Bu fonksiyon artık 'tracks_to_analyze' listesini alıp GÜVENLE temizleyecek.
+        with st.spinner(f"Analiz ediliyor: {report_title} ({len(tracks_to_analyze)} öğe)"):
+            report_data = analyzer.run_analysis_on_tracklist(tracks_to_analyze, report_title, top_artists_data)
+        
+        # Eğer temizleme sonrası analiz edilecek bir şey kalmadıysa
+        if report_data is None:
+            st.error("Analiz tamamlanamadı (temizlenecek şarkı bulunamadı).")
+            st.stop()
+            
+        st.session_state['report_data'] = report_data
+        
+        # JSON olarak kaydet
+        filename = f'spotify_detayli_rapor_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json'
+        with open(filename, 'w', encoding='utf-8') as f:
+            json.dump(report_data, f, ensure_ascii=False, indent=2)
+
+        # 3. Gemini Analizini Yap
         with st.spinner("🤖 Gemini, müzik profilinizi analiz ediyor..."):
             insights_text, usage_metrics = gemini_analyzer.generate_insights(report_data)
             st.session_state['insights_text'] = insights_text
             st.session_state['usage_metrics'] = usage_metrics
 
-        # 3. Gemini Çalma Listesini Oluştur
+        # 4. Gemini Çalma Listesini Oluştur
         with st.spinner("🎶 Gemini, kişiselleştirilmiş keşif listenizi oluşturuyor..."):
-            # --- DEĞİŞİKLİK BURADA ---
             playlist_json, playlist_metrics = gemini_analyzer.generate_personalized_playlist(report_data, playlist_name)
             st.session_state['playlist_json'] = playlist_json
-            st.session_state['playlist_metrics'] = playlist_metrics # Metrikleri de kaydet
-            # --- DEĞİŞİKLİK SONU ---
+            st.session_state['playlist_metrics'] = playlist_metrics
 
         st.success("🎉 Raporunuz hazır! Aşağı kaydırarak görebilirsiniz.")
 
@@ -596,15 +869,16 @@ if st.sidebar.button(f"🚀 {selected_label} Raporunu Oluştur", type="primary",
         st.error(f"❌ Rapor oluşturulurken bir hata oluştu: {e}")
         st.code(traceback.format_exc())
 
-# --- Sonuçların Gösterilmesi ---
+# --- Sonuçların Gösterilmesi (Değişiklik Yok) ---
 st.divider()
 
 # 1. Spotify Raporunu Göster
 if 'report_data' in st.session_state:
-    st.header(f"📊 {selected_label} Spotify Raporu")
+    st.header(f"📊 Spotify Raporu: {st.session_state['report_data']['time_range']}")
+    # Bu fonksiyon Adım 3'te güncellendi
     display_spotify_report(st.session_state['report_data'])
 else:
-    st.info("Lütfen sol taraftaki menüden bir rapor oluşturun.")
+    st.info("Lütfen sol taraftaki menüden bir analiz kaynağı seçip 'Analizi Başlat' butonuna basın.")
 
 # 2. Gemini Analizini Göster
 if 'insights_text' in st.session_state:
@@ -622,19 +896,15 @@ if 'playlist_json' in st.session_state:
     st.header(f"🎶 Gemini Keşif Listesi: {playlist_name}")
     
     try:
-        # st.json(st.session_state['playlist_json']) # Ham JSON'u görmek için
         playlist_data = json.loads(st.session_state['playlist_json'])
         st.dataframe(playlist_data.get('songs', []), use_container_width=True)
         
-        # BONUS: Çalma Listesini Spotify'da Oluştur Butonu
         if st.button("Bu Listeyi Spotify'da Oluştur 🚀", type="primary", use_container_width=True):
             create_spotify_playlist(analyzer, playlist_name, st.session_state['playlist_json'])
 
-        # --- YENİ EKLENEN BÖLÜM ---
         if 'playlist_metrics' in st.session_state:
             with st.expander("📊 Gemini Kullanım Metrikleri (Liste Oluşturma)"):
                 st.json(st.session_state['playlist_metrics'])
-        # --- YENİ BÖLÜM SONU ---
 
     except json.JSONDecodeError:
         st.error("❌ Gemini'den gelen çalma listesi yanıtı JSON formatında değil. Ham çıktı:")
