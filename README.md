@@ -67,8 +67,8 @@ A Streamlit app that analyzes your Spotify listening habits (genres, artists, po
 ### 1️⃣ Projeyi Klonlayın / Clone the Project
 
 ```bash
-git clone https://github.com/your-username/SpotifyAnalyzer.git
-cd SpotifyAnalyzer
+git clone https://github.com/barandincoguz/AI-Based-Spotify-Analyzer-And-Playlist-Maker
+cd AI-Based-Spotify-Analyzer-And-Playlist-Maker
 ```
 
 ### 2) Sanal Ortam / Virtualenv
