@@ -335,54 +335,89 @@ class SpotifyAdvancedAnalyzer:
     
     def sanitize_track_list(self, tracks: List) -> List[Dict]:
         """
-        Clean and validate track list with comprehensive error handling
-        Returns only valid track objects with required fields
+        Cleans and *patches* a list of raw track items.
+        It trims faulty data but does not discard the track if an ID exists.
+        
+        Gelen 'kirli' şarkı listesini (wrapper'lar, bozuk veriler) alır ve
+        gerekli alanları 'yamayarak' %100 temiz bir liste döndürür.
         """
         clean_tracks = []
-        
         if not tracks:
-            logger.warning("Empty track list provided for sanitization")
+            logger.warning("Sanitization için boş şarkı listesi sağlandı")
             return []
-        
-        invalid_count = 0
-        
+
+        invalid_count = 0 # Tamamen kurtarılamayan (ID'si olmayan)
+        patched_count = 0 # Kurtarılan ama yamalanan
+
         for item in tracks:
             track_obj = None
             
-            # Type validation
-            if not isinstance(item, dict):
+            # 1. Adım: Şarkı objesini (track_obj) çıkar
+            if isinstance(item, dict):
+                if 'track' in item and isinstance(item.get('track'), dict):
+                    track_obj = item['track'] # Bu bir wrapper: {'track': {...}}
+                elif 'id' in item:
+                    track_obj = item # Bu doğrudan bir track objesi: {'id': ...}
+            
+            # 2. Adım: Eğer bir şarkı objesi yapısı bulamadıysak (örn: 'True' veya 'None' ise)
+            if not track_obj:
+                invalid_count += 1
+                continue
+                
+            # 3. Adım: VALIDATE (Doğrula) - Tek Kural: ID'si olmalı
+            # Eğer bir ID yoksa, bu öğe kurtarılamaz.
+            if not track_obj.get('id'):
                 invalid_count += 1
                 continue
             
-            # Handle wrapper objects: {'track': {...}}
-            if 'track' in item:
-                inner_track = item.get('track')
-                if isinstance(inner_track, dict) and inner_track.get('id'):
-                    track_obj = inner_track
-                else:
-                    invalid_count += 1
-                    continue
+            # 4. Adım: PATCH (Yama) - Veriyi kaybetme, düzelt!
+            # Diğer analiz fonksiyonlarının (popularity, genres) çökmemesi için
+            # eksik alanları varsayılan değerlerle doldur.
             
-            # Handle direct track objects: {'id': ...}
-            elif 'id' in item:
-                track_obj = item
+            is_patched = False
             
-            # Validate required fields
-            if track_obj and self._validate_track_object(track_obj):
-                clean_tracks.append(track_obj)
-            else:
-                invalid_count += 1
-        
+            # İsim kontrolü
+            if not track_obj.get('name'): # (None veya "")
+                track_obj['name'] = "İsimsiz Parça"
+                is_patched = True
+            
+            # Sanatçı kontrolü
+            if not track_obj.get('artists') or not isinstance(track_obj['artists'], list) or not track_obj['artists']:
+                track_obj['artists'] = [{'id': None, 'name': 'Bilinmeyen Sanatçı'}]
+                is_patched = True
+            
+            # Albüm kontrolü
+            if not track_obj.get('album') or not isinstance(track_obj['album'], dict):
+                track_obj['album'] = {'name': 'Bilinmeyen Albüm', 'release_date': '1900'}
+                is_patched = True
+            
+            # Popülerlik kontrolü
+            if 'popularity' not in track_obj:
+                track_obj['popularity'] = 0
+                is_patched = True
+                
+            if is_patched:
+                patched_count += 1
+            
+            # Temiz listeye sadece %100 güvenli ve yamalanmış objeyi ekle
+            clean_tracks.append(track_obj)
+
         if invalid_count > 0:
-            logger.info(f"Filtered out {invalid_count} invalid tracks")
+            logger.info(f"Filtrelendi: {invalid_count} adet kurtarılamayan öğe (ID'siz veya bozuk format)")
+        if patched_count > 0:
+            logger.info(f"Yamalandı: {patched_count} adet şarkıda eksik alanlar (isim, sanatçı vb.) düzeltildi")
+            
+        logger.info(f"Temizlendi: {len(tracks)} öğe -> {len(clean_tracks)} geçerli şarkı")
         
-        logger.info(f"Sanitized {len(tracks)} items -> {len(clean_tracks)} valid tracks")
+        # Streamlit'e de bilgi verelim
+        st.toast(f"ℹ️ {invalid_count} bozuk öğe atlandı, {patched_count} şarkı yamalandı.")
+        
         return clean_tracks
     
-    def _validate_track_object(self, track: Dict) -> bool:
-        """Validate that track object has minimum required fields"""
-        required_fields = ['id', 'name']
-        return all(track.get(field) for field in required_fields)
+    # def _validate_track_object(self, track: Dict) -> bool:
+    #     """Validate that track object has minimum required fields"""
+    #     required_fields = ['id', 'name']
+    #     return all(track.get(field) for field in required_fields)
 
     # ========================================
     # ANALYSIS FUNCTIONS (ENHANCED)
