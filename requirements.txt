@@ -3,3 +3,4 @@ pandas
 spotipy
 google-generativeai
 pydantic
+python-dotenv
