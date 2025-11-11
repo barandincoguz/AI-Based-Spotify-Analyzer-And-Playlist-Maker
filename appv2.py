@@ -423,56 +423,56 @@ class SpotifyAdvancedAnalyzer:
     # ANALYSIS FUNCTIONS (ENHANCED)
     # ========================================
 
-    def get_audio_features(self, tracks: List[Dict]) -> Optional[Dict[str, float]]:
-        """Get audio features with batch processing and error handling"""
-        track_ids = [track.get('id') for track in tracks if track.get('id')]
+    # def get_audio_features(self, tracks: List[Dict]) -> Optional[Dict[str, float]]:
+    #     """Get audio features with batch processing and error handling"""
+    #     track_ids = [track.get('id') for track in tracks if track.get('id')]
         
-        if not track_ids:
-            logger.warning("No valid track IDs for audio features")
-            return None
+    #     if not track_ids:
+    #         logger.warning("No valid track IDs for audio features")
+    #         return None
         
-        try:
-            all_features = []
-            # Process in batches of 50 (Spotify API limit)
-            for i in range(0, len(track_ids), 50):
-                batch = track_ids[i:i+50]
-                features = self.sp.audio_features(batch)
-                all_features.extend([f for f in features if f is not None])
+    #     try:
+    #         all_features = []
+    #         # Process in batches of 50 (Spotify API limit)
+    #         for i in range(0, len(track_ids), 50):
+    #             batch = track_ids[i:i+50]
+    #             features = self.sp.audio_features(batch)
+    #             all_features.extend([f for f in features if f is not None])
             
-            if not all_features:
-                logger.warning("No audio features returned from API")
-                return None
+    #         if not all_features:
+    #             logger.warning("No audio features returned from API")
+    #             return None
 
-            # Calculate averages
-            metrics = {
-                'danceability': [],
-                'energy': [],
-                'valence': [],
-                'acousticness': [],
-                'instrumentalness': [],
-                'speechiness': [],
-                'tempo': []
-            }
+    #         # Calculate averages
+    #         metrics = {
+    #             'danceability': [],
+    #             'energy': [],
+    #             'valence': [],
+    #             'acousticness': [],
+    #             'instrumentalness': [],
+    #             'speechiness': [],
+    #             'tempo': []
+    #         }
             
-            for feature in all_features:
-                for key in metrics.keys():
-                    value = feature.get(key)
-                    if value is not None:
-                        metrics[key].append(value)
+    #         for feature in all_features:
+    #             for key in metrics.keys():
+    #                 value = feature.get(key)
+    #                 if value is not None:
+    #                     metrics[key].append(value)
             
-            averages = {
-                key: statistics.mean(values) 
-                for key, values in metrics.items() 
-                if values
-            }
+    #         averages = {
+    #             key: statistics.mean(values) 
+    #             for key, values in metrics.items() 
+    #             if values
+    #         }
             
-            logger.info(f"Calculated audio features for {len(all_features)} tracks")
-            return averages
+    #         logger.info(f"Calculated audio features for {len(all_features)} tracks")
+    #         return averages
             
-        except Exception as e:
-            logger.error(f"Error calculating audio features: {e}")
-            st.error(f"Ses özellikleri alınırken hata: {e}")
-            return None
+    #     except Exception as e:
+    #         logger.error(f"Error calculating audio features: {e}")
+    #         st.error(f"Ses özellikleri alınırken hata: {e}")
+    #         return None
     
     def analyze_genres(self, tracks: List[Dict]) -> Tuple[Counter, Counter, Dict]:
         """Analyze genres with artist information"""
@@ -554,26 +554,26 @@ class SpotifyAdvancedAnalyzer:
         logger.info(f"Decade distribution: {len(decades)} decades found")
         return decades
     
-    def create_mood_profile(self, audio_features: Optional[Dict]) -> str:
-        """Create mood profile from audio features"""
-        if not audio_features:
-            return "Veri Yetersiz 🎵"
+    # def create_mood_profile(self, audio_features: Optional[Dict]) -> str:
+    #     """Create mood profile from audio features"""
+    #     if not audio_features:
+    #         return "Veri Yetersiz 🎵"
         
-        energy = audio_features.get('energy', 0)
-        valence = audio_features.get('valence', 0)
-        danceability = audio_features.get('danceability', 0)
+    #     energy = audio_features.get('energy', 0)
+    #     valence = audio_features.get('valence', 0)
+    #     danceability = audio_features.get('danceability', 0)
         
-        # Mood classification logic
-        if energy > 0.7 and danceability > 0.7:
-            return "Enerjik ve Dans Edilebilir 🎉"
-        elif valence > 0.7:
-            return "Neşeli ve Pozitif 😊"
-        elif energy < 0.4 and valence < 0.4:
-            return "Sakin ve Melankolik 🌙"
-        elif energy > 0.6 and valence < 0.5:
-            return "Yoğun ve Duygusal 🔥"
-        else:
-            return "Dengeli ve Çeşitli 🎵"
+    #     # Mood classification logic
+    #     if energy > 0.7 and danceability > 0.7:
+    #         return "Enerjik ve Dans Edilebilir 🎉"
+    #     elif valence > 0.7:
+    #         return "Neşeli ve Pozitif 😊"
+    #     elif energy < 0.4 and valence < 0.4:
+    #         return "Sakin ve Melankolik 🌙"
+    #     elif energy > 0.6 and valence < 0.5:
+    #         return "Yoğun ve Duygusal 🔥"
+    #     else:
+    #         return "Dengeli ve Çeşitli 🎵"
 
     # ========================================
     # REPORT GENERATION (ENHANCED)
@@ -621,12 +621,8 @@ class SpotifyAdvancedAnalyzer:
         with st.spinner("Tür ve sanatçı analizi yapılıyor..."):
             genre_counter, artist_counter, genre_by_artist = self.analyze_genres(clean_tracks)
         
-        with st.spinner("Ses özellikleri hesaplanıyor..."):
-            audio_features = self.get_audio_features(clean_tracks)
-        
         popularity_stats = self.analyze_popularity(clean_tracks)
         decade_dist = self.get_decade_distribution(clean_tracks)
-        mood_profile = self.create_mood_profile(audio_features)
         
         # Prepare top artists
         top_artists_data = []
@@ -648,8 +644,6 @@ class SpotifyAdvancedAnalyzer:
             'timestamp': datetime.now().isoformat(),
             'time_range': analysis_title,
             'user': self.user_name,
-            'mood_profile': mood_profile,
-            'audio_features': audio_features or {},
             'genres': dict(genre_counter.most_common(20)),
             'genre_by_artist': {k: list(v) for k, v in genre_by_artist.items()},
             'top_artists': top_artists_data,
@@ -688,9 +682,9 @@ class GeminiReportAnalyzer:
             genai.configure(api_key=api_key)
             
             generation_config = genai.types.GenerationConfig(
-                temperature=0.2,
+                temperature=0.1,
                 top_p=0.95,
-                top_k=40
+                top_k=30
             )
             
             safety_settings = {
@@ -727,17 +721,11 @@ Sen bir müzik psikoloğu ve uzman bir veri analistisin. Görevi, bir kullanıc�
 
 Lütfen aşağıdaki yapıya benzer bir analiz yap:
 
-1. **Giriş (Genel Müzik Viben):** Kullanıcının genel müzik zevkini (mood_profile, energy, valence) özetleyerek başla.
-
+1. **Giriş (Genel Profil):** Kullanıcının genel müzik zevkini, türlere ve sanatçılara bakarak kısaca özetle.
 2. **Tür Analizi:** En çok dinlenen türlere bak. Bu türler kullanıcının kişiliği hakkında ne söylüyor olabilir?
-
 3. **Sanatçı ve Popülerlik:** Top sanatçılara ve popülerlik istatistiklerine bak. Kullanıcı popüler (mainstream) mi, yoksa daha az bilinen (niche/underground) sanatçıları mı keşfetmeyi seviyor?
-
-4. **Duygu Durumu (Audio Features):** Dans edilebilirlik, enerji, valens (pozitiflik) ve akustiklik verilerini yorumla.
-
-5. **Zaman Yolculuğu (Decade Distribution):** Hangi on yıldan müzik dinlediği onun nostaljik mi yoksa yenilikçi mi olduğunu gösteriyor?
-
-6. **Kapanış ve Öneri:** Tüm bu bilgilere dayanarak kullanıcıya kısa bir özet ve belki bir müzik önerisi sun.
+4. **Zaman Yolculuğu (Decade Distribution):** Hangi on yıldan müzik dinlediği onun nostaljik mi yoksa yenilikçi mi olduğunu gösteriyor?
+5. **Kapanış ve Öneri:** Tüm bu bilgilere dayanarak kullanıcıya kısa bir özet ve belki bir müzik önerisi sun.   
 
 İşte analiz edilecek veri:
 
@@ -797,8 +785,8 @@ Sen, Spotify'ın "Haftalık Keşif" (Discover Weekly) listelerini tasarlayan uzm
 Aşağıdaki verileri analiz et. Bu analize dayanarak, '{playlist_name}' adını verdiğimiz liste için **{config.GEMINI_PLAYLIST_REQUEST_SIZE} ADET** şarkı öner. (Bazıları bulunamayabilir, o yüzden {config.PLAYLIST_TARGET_SIZE}'dan fazla öner.)
 
 **KRİTİK KURALLAR:**
-1. **YENİLİKÇİ OL:** Önerdiğin şarkılar, kullanıcının `top_artists` veya `top_tracks` listesindekilerle **AYNI OLMAMALI**.
-2. **DENGELİ OL:** Kullanıcının ana türlerine (örn: {genre_hint}) bağlı kal, ama aynı zamanda ses özelliklerine uyan sürpriz türlerden de 1-2 şarkı ekle.
+1. **YENİLİKÇİ OL**: Önerdiğin şarkılar, kullanıcının top_artists veya top_tracks listesindekilerle AYNI OLMAMALI.
+2. **DENGELİ OL:** Kullanıcının ana türlerine (örn: {genre_hint}) bağlı kal ve bu türlere uyan sürpriz sanatçılar öner.
 3. **YORUM YAPMA:** Çıktın SADECE istenen JSON formatında olmalı.
 
 **İSTENEN ÇIKIŞ FORMATI (Sadece bu JSON'u döndür):**
@@ -871,47 +859,13 @@ Aşağıdaki verileri analiz et. Bu analize dayanarak, '{playlist_name}' adını
 def display_spotify_report(report_data: Dict):
     """Display Spotify report with enhanced visualization"""
     
-    st.header("🎭 Müzik Profiliniz")
+    # --- MOOD PROFILE VE AUDIO FEATURES BÖLÜMLERİ SİLİNDİ ---
     
-    # Mood Profile
-    mood = report_data.get('mood_profile', 'N/A')
-    st.subheader(f"✨ Müzik Tarzınız: {mood}")
-
-    # Audio Features
-    if report_data.get('audio_features'):
-        features = report_data['audio_features']
-        
-        st.markdown("### 🎵 Ses Özellikleri")
-        cols = st.columns(3)
-        
-        cols[0].metric(
-            "⚡ Enerji", 
-            f"{features.get('energy', 0)*100:.0f}%",
-            help="Yoğunluk ve aktivite seviyesi"
-        )
-        cols[1].metric(
-            "💃 Dans Edilebilirlik", 
-            f"{features.get('danceability', 0)*100:.0f}%",
-            help="Ritim ve tempo uygunluğu"
-        )
-        cols[2].metric(
-            "😊 Pozitiflik", 
-            f"{features.get('valence', 0)*100:.0f}%",
-            help="Müzikal pozitiflik (valence)"
-        )
-        
-        with st.expander("🔍 Tüm Ses Özelliklerini Gör"):
-            cols = st.columns(2)
-            cols[0].metric("🎸 Akustik Oran", f"{features.get('acousticness', 0)*100:.0f}%")
-            cols[1].metric("🎹 Enstrümantal Oran", f"{features.get('instrumentalness', 0)*100:.0f}%")
-            cols[0].metric("🎤 Konuşma İçeriği", f"{features.get('speechiness', 0)*100:.0f}%")
-            cols[1].metric("🥁 Ortalama Tempo", f"{features.get('tempo', 0):.0f} BPM")
-
     st.divider()
     
     # Genre Analysis
     if report_data.get('genres'):
-        st.header("🎸 En Çok Dinlediğiniz Türler")
+        st.header("🎭 Müzik Profili: Türler ve Popülerlik") # Yeni başlık
         
         genres_data = report_data['genres']
         if genres_data:
@@ -938,7 +892,6 @@ def display_spotify_report(report_data: Dict):
         if report_data.get('top_artists'):
             artists_df = pd.DataFrame(report_data['top_artists'])
             
-            # Format display
             display_df = artists_df[['name', 'popularity', 'followers']].copy()
             display_df.columns = ['Sanatçı', 'Popülerlik', 'Takipçi']
             
@@ -953,7 +906,6 @@ def display_spotify_report(report_data: Dict):
         if report_data.get('top_tracks'):
             tracks_df = pd.DataFrame(report_data['top_tracks'])
             
-            # Format display
             display_df = tracks_df.copy()
             display_df['artists'] = display_df['artists'].apply(lambda x: ', '.join(x) if isinstance(x, list) else x)
             display_df.columns = ['Şarkı', 'Sanatçı(lar)', 'Albüm']
@@ -977,7 +929,6 @@ def display_spotify_report(report_data: Dict):
             avg_pop = stats.get('avg', 0)
             st.metric("Ortalama Popülerlik", f"{avg_pop:.1f} / 100")
             
-            # Popularity interpretation
             if avg_pop > 70:
                 st.info("💡 **Mainstream** müzikleri seviyorsunuz! Popüler şarkıları takip ediyorsunuz.")
             elif avg_pop < 40:
@@ -985,7 +936,6 @@ def display_spotify_report(report_data: Dict):
             else:
                 st.info("💡 **Dengeli** bir zevkiniz var! Hem popüler hem niche şarkılar dinliyorsunuz.")
             
-            # Additional stats
             with st.expander("📊 Detaylı İstatistikler"):
                 st.write(f"**En Yüksek:** {stats.get('max', 0)}")
                 st.write(f"**En Düşük:** {stats.get('min', 0)}")
@@ -1003,10 +953,12 @@ def display_spotify_report(report_data: Dict):
                 )
                 st.bar_chart(decades_df.set_index('Yıl'), height=300)
                 
-                # Nostalgic analysis
-                oldest_decade = min([int(d.replace("'ler", "")) for d in decades_data.keys()])
-                if oldest_decade < 2000:
-                    st.info(f"🕰️ Nostaljik bir ruh! {oldest_decade}'lerden müzik dinliyorsunuz.")
+                try:
+                    oldest_decade = min([int(d.replace("'ler", "")) for d in decades_data.keys()])
+                    if oldest_decade < 2000:
+                        st.info(f"🕰️ Nostaljik bir ruh! {oldest_decade}'lerden müzik dinliyorsunuz.")
+                except Exception as e:
+                    logger.warning(f"Could not parse decades: {e}")
 
     st.divider()
 
@@ -1015,7 +967,6 @@ def display_spotify_report(report_data: Dict):
     if report_data.get('statistics'):
         stats = report_data['statistics']
         
-        # Determine metric label based on analysis type
         analysis_title = report_data.get('time_range', 'Bu Analizdeki')
         
         if "Kütüphanem" in analysis_title:
